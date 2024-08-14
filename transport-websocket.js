@@ -2,8 +2,8 @@
 
 const log = require('./loggers.js');
 
-// polyfill websockets in Node
-if (typeof (WebSocket) == "undefined") global.WebSocket = require('ws');
+// force polyfill websockets in Node to support Node 22+
+if (typeof(window) == "undefined" || typeof(WebSocket) == "undefined") global.WebSocket = require('ws');
 
 function Transport(ip, port) {
     this.host = ip;
