@@ -9,7 +9,6 @@
  * @param {string} desc.display_version - A version string that is displayed to the user for this extension. Can be anything you want.
  * @param {string} desc.publisher - The name of the developer of the extension.
  * @param {string} desc.website - Website for more information about the extension.
- * @param {string} desc.log_level - How much logging information to print.  "all" for all messages, "none" for no messages, anything else for all messages not tagged as "quiet" by the Roon core.
  * @param {string} desc.force_server - Force app into NodeJS mode (usually can auto-detect, but may not be able to do it properly in Electron).
  * @param {RoonApi~core_paired} [desc.core_paired] - Called when Roon pairs you.
  * @param {RoonApi~core_unpaired} [desc.core_unpaired] - Called when Roon unpairs you.
@@ -48,17 +47,8 @@ const WSTransport = require('./transport-websocket.js'),
     Moo = require('./moo.js'),
     MooMessage = require('./moomsg.js'),
     Core = require('./core.js'),
-    os = require('os');
-
-function Logger(roonapi) {
-    this.roonapi = roonapi;
-}
-
-Logger.prototype.log = function () {
-    if (this.roonapi.log_level !== "none") {
-        console.log.apply(null, arguments);
-    }
-};
+    os = require('os'),
+    log = require('./loggers.js');
 
 function RoonApi(o) {
     this._service_request_handlers = {};
@@ -112,8 +102,6 @@ function RoonApi(o) {
         this.extension_reginfo.website = o.website;
     }
 
-    this.logger = new Logger(this);
-    this.log_level = o.log_level;
     this.extension_opts = o;
     this.is_paired = false;
     this.configDir = o.configDir;
@@ -139,11 +127,13 @@ function RoonApi(o) {
                 }
             } else {
                 // first start_discovery call: setup everything
-                this.logger.log("Setting up sood");
-                this._sood = require('./sood.js')(this.logger);
+                log.debug("Setting up sood");
+                this._sood = require('./sood.js')();
                 this._sood_conns = {};
                 this._sood.on('message', msg => {
-                    //this.logger.log(msg);
+                    if (log.msgTrace.enabled) {
+                        log.msgTrace("<- SOOD", JSON.stringify(msg));
+                    }
                     if (msg.props.service_id === "00720724-5143-4a9b-abac-0e50cba674bb" && msg.props.unique_id) {
                         if (this._sood_conns[msg.props.unique_id]) {
                             return;
@@ -179,7 +169,7 @@ function RoonApi(o) {
                 });
             }
 
-            this.logger.log("Starting sood");
+            log.debug("Starting sood");
             this._sood.start(() => {
                 this._sood.query({query_service_id: "00720724-5143-4a9b-abac-0e50cba674bb"});
                 this.scanIntervalId = setInterval(() => this.periodic_scan(), (10 * 1000));
@@ -210,7 +200,7 @@ function RoonApi(o) {
         RoonApi.prototype.disconnect_all = function () {
             if (this._sood_conns) {
                 Object.entries(this._sood_conns).forEach(([id, conn]) => {
-                    this.logger.log("Closing Roon connection: %s", id);
+                    log.debug("Closing Roon connection: %s", id);
                     conn.transport.close();
                 });
             }
@@ -250,7 +240,7 @@ function RoonApi(o) {
                 }
                 fs.writeFileSync(configPath, JSON.stringify(config, null, "    "));
             } catch (e) {
-                this.logger.log("Failed to save configuration", e);
+                log.error("Failed to save configuration", e);
             }
         };
 
@@ -484,10 +474,10 @@ RoonApi.prototype.register_service = function (svcname, spec) {
  * @param {RoonApi~onerror} [options.onerror] - Called when there is a websocket error
  */
 RoonApi.prototype.ws_connect = function ({host, port, onclose, onerror}) {
-    let moo = new Moo(new WSTransport(host, port, this.logger));
+    let moo = new Moo(new WSTransport(host, port));
 
     moo.transport.onopen = () => {
-        //        this.logger.log("OPEN");
+        log.info("WS opened");
         this.scan_count = -1;
 
         moo.send_request("com.roonlabs.registry:1/info",
@@ -508,7 +498,7 @@ RoonApi.prototype.ws_connect = function ({host, port, onclose, onerror}) {
     };
 
     moo.transport.onclose = () => {
-//        this.logger.log("CLOSE");
+        log.info("WS closed");
         // reset scan count for faster reconnect
         this.scan_count = -1;
 
@@ -519,21 +509,19 @@ RoonApi.prototype.ws_connect = function ({host, port, onclose, onerror}) {
     };
 
     moo.transport.onerror = err => {
-        this.logger.log("ERROR", err);
+        log.warn("WS error", err);
         onerror && onerror(moo);
     };
 
     moo.transport.onmessage = msg => {
-//        this.logger.log("GOTMSG");
+        // log.debug("GOTMSG"); // too verbose
         const body = msg.body;
         delete (msg.body);
-        const logging = msg && msg.headers && msg.headers["Logging"];
-        msg.log = ((this.log_level === "all") || (logging !== "quiet"));
         if (msg.verb === "REQUEST") {
-            if (msg.log) {
-                this.logger.log('<-', msg.verb, msg.request_id, msg.service + "/" + msg.name, body ? JSON.stringify(body) : "");
+            if (log.msgTrace.enabled) {
+                log.msgTrace('<-', msg.verb, msg.request_id, msg.service + "/" + msg.name, body ? JSON.stringify(body) : "");
             }
-            const req = new MooMessage(moo, msg, body, this.logger);
+            const req = new MooMessage(moo, msg, body);
             const handler = this._service_request_handlers[msg.service];
             if (handler) {
                 handler(req, req.moo.mooid);
@@ -541,8 +529,8 @@ RoonApi.prototype.ws_connect = function ({host, port, onclose, onerror}) {
                 req.send_complete("InvalidRequest", {error: "unknown service: " + msg.service});
             }
         } else {
-            if (msg.log) {
-                this.logger.log('<-', msg.verb, msg.request_id, msg.name, body ? JSON.stringify(body) : "");
+            if (log.msgTrace.enabled) {
+                log.msgTrace('<-', msg.verb, msg.request_id, msg.name, body ? JSON.stringify(body) : "");
             }
             if (!moo.handle_response(msg, body)) {
                 moo.transport.close(); // this will trigger the above onclose handler
@@ -581,7 +569,7 @@ function ev_registered(moo, msg, body) {
             moo.core = undefined;
         }
     } else if (msg.name === "Registered") {
-        moo.core = new Core(moo, this, body, this.logger);
+        moo.core = new Core(moo, this, body);
 
         let settings = this.get_persisted_state();
         if (!settings.tokens) {

@@ -1,5 +1,7 @@
 "use strict";
 
+const log = require('./loggers.js');
+
 function MooMessage(moo, msg, body) {
     this.moo = moo;
     this.msg = msg;
@@ -11,9 +13,9 @@ MooMessage.prototype.send_continue = function() {
     var body;
     var content_type;
 
-    if (arguments.length == 1) {
+    if (arguments.length === 1) {
         name = arguments[0];
-    } else if (arguments.length == 2) {
+    } else if (arguments.length === 2) {
         name = arguments[0];
         body = arguments[1];
     } else if (arguments.length >= 3) {
@@ -41,12 +43,15 @@ MooMessage.prototype.send_continue = function() {
                   'Content-Type: ' + content_type + '\n';
     }
 
-    if (this.msg.log) this.moo.logger.log('-> CONTINUE', this.msg.request_id, name, origbody ? JSON.stringify(origbody) : "");
+    if (log.msgTrace.enabled) {
+        log.msgTrace('-> CONTINUE', this.msg.request_id, name, origbody ? JSON.stringify(origbody) : "");
+    }
     const m = Buffer.from(header + '\n');
-    if (body)
-        this.moo.transport.send(Buffer.concat([ m, body ], m.length + body.length));
-    else
+    if (body) {
+        this.moo.transport.send(Buffer.concat([m, body], m.length + body.length));
+    } else {
         this.moo.transport.send(m);
+    }
 };
 
 MooMessage.prototype.send_complete = function() {
@@ -54,9 +59,9 @@ MooMessage.prototype.send_complete = function() {
     var body;
     var content_type;
 
-    if (arguments.length == 1) {
+    if (arguments.length === 1) {
         name = arguments[0];
-    } else if (arguments.length == 2) {
+    } else if (arguments.length === 2) {
         name = arguments[0];
         body = arguments[1];
     } else if (arguments.length >= 3) {
@@ -84,12 +89,15 @@ MooMessage.prototype.send_complete = function() {
                   'Content-Type: ' + content_type + '\n';
     }
 
-    if (this.msg.log) this.moo.logger.log('-> COMPLETE', this.msg.request_id, name, origbody ? JSON.stringify(origbody) : "");
+    if (log.msgTrace.enabled) {
+        log.msgTrace('-> COMPLETE', this.msg.request_id, name, origbody ? JSON.stringify(origbody) : "");
+    }
     const m = Buffer.from(header + '\n');
-    if (body)
-        this.moo.transport.send(Buffer.concat([ m, body ], m.length + body.length));
-    else
+    if (body) {
+        this.moo.transport.send(Buffer.concat([m, body], m.length + body.length));
+    } else {
         this.moo.transport.send(m);
+    }
 };
 
 

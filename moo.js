@@ -3,6 +3,8 @@ MOO uses the web socket to talk to the core via the provided API endpoints
  */
 "use strict";
 
+const log = require('./loggers.js');
+
 function Moo(transport) {
     this.transport = transport;
     this.transport.moo = this;
@@ -10,14 +12,13 @@ function Moo(transport) {
     this.subkey = 0;
     this.requests = {};
     this.mooid = Moo._counter++;
-    this.logger = transport.logger;
 }
 
 Moo._counter = 0;
 
 Moo.prototype._subscribe_helper = function(svcname, reqname, cb) {
     var subscription_args = {};
-    if (arguments.length == 4) {
+    if (arguments.length === 4) {
         cb = arguments[3];
         subscription_args = arguments[2];
     }
@@ -26,8 +27,9 @@ Moo.prototype._subscribe_helper = function(svcname, reqname, cb) {
     subscription_args.subscription_key = subkey;
     self.send_request(svcname + "/subscribe_" + reqname, subscription_args,
                             function (msg, body) {
-                                if (cb)
-                                    cb(msg && msg.name == "Success" ? false : (msg ? msg.name : "NetworkError"), body);
+                                if (cb) {
+                                    cb(msg && msg.name === "Success" ? false : (msg ? msg.name : "NetworkError"), body);
+                                }
                             });
     return {
         unsubscribe: function(ucb) {
@@ -70,12 +72,15 @@ Moo.prototype.send_request = function() {
                   'Content-Type: ' + content_type + '\n';
     }
 
-    this.logger.log('-> REQUEST', this.reqid, name, origbody ? JSON.stringify(origbody) : "");
+    if (log.msgTrace.enabled) {
+        log.msgTrace('-> REQUEST', this.reqid, name, origbody ? JSON.stringify(origbody) : "");
+    }
     const m = Buffer.from(header + '\n');
-    if (body)
-        this.transport.send(Buffer.concat([ m, body ], m.length + body.length));
-    else
+    if (body) {
+        this.transport.send(Buffer.concat([m, body], m.length + body.length));
+    } else {
         this.transport.send(m);
+    }
 
     this.requests[this.reqid] = { cb: cb };
     this.reqid++;
@@ -95,43 +100,43 @@ Moo.prototype.parse = function(buf) {
         for (var i = 0; i < buf.length; ++i) buf[i] = view[i];
     }
 
-    if (buf.length == 0) {
-        this.logger.log("MOO: empty message received");
+    if (buf.length === 0) {
+        log.warn("MOO: empty message received");
         return undefined;
     }
 
     var state;
     while (e < buf.length) {
-        if (buf[e] == 0xa) { // looking to parse lines -- s == start of line, e == end of line
+        if (buf[e] === 0xa) { // looking to parse lines -- s == start of line, e == end of line
             // parsing headers or first line?
-            if (state == 'header') {
-                if (s == e) { // is blank line? blank line is end of headers
+            if (state === 'header') {
+                if (s === e) { // is blank line? blank line is end of headers
                     // end of MOO header
                     if (msg.request_id === undefined) {
-                        this.logger.log('MOO: missing Request-Id header: ', msg);
+                        log.warn('MOO: missing Request-Id header: ', msg);
                         return undefined;
                     }
                     if (msg.content_length === undefined) {
                         if (msg.content_type) {
-                            this.logger.log("MOO: bad message; has Content-Type but not Content-Length: ", msg);
+                            log.warn("MOO: bad message; has Content-Type but not Content-Length: ", msg);
                             return undefined;
                         }
-                        if (e != buf.length - 1) {
-                            this.logger.log("MOO: bad message; has no Content-Length, but data after headers: ", msg);
+                        if (e !== buf.length - 1) {
+                            log.warn("MOO: bad message; has no Content-Length, but data after headers: ", msg);
                             return undefined;
                         }
 
                     } else {
                         if (msg.content_length > 0) {
                             if (!msg.content_type) {
-                                this.logger.log("MOO: bad message; has Content-Length but not Content-Type: ",  msg);
+                                log.warn("MOO: bad message; has Content-Length but not Content-Type: ",  msg);
                                 return undefined;
-                            } else if (msg.content_type == "application/json") {
+                            } else if (msg.content_type === "application/json") {
                                 var json = buf.toString('utf8', e+1, e+1+msg.content_length);
                                 try {
                                     msg.body = JSON.parse(json);
                                 } catch (e) {
-                                    this.logger.log("MOO: bad json body: ", json, msg);
+                                    log.warn("MOO: bad json body: ", json, msg);
                                     return undefined;
                                 }
                             } else {
@@ -139,22 +144,23 @@ Moo.prototype.parse = function(buf) {
                             }
                         }
                     }
-		    return msg;
+                    return msg;
                 } else {
                     // parse MOO header line
                     var line = buf.toString('utf8', s, e);
                     var matches = line.match(/([^:]+): *(.*)/);
                     if (matches) {
-                        if (matches[1] == "Content-Type")
+                        if (matches[1] === "Content-Type") {
                             msg.content_type = matches[2];
-                        else if (matches[1] == "Content-Length")
+                        } else if (matches[1] === "Content-Length") {
                             msg.content_length = parseInt(matches[2]);
-                        else if (matches[1] == "Request-Id")
+                        } else if (matches[1] === "Request-Id") {
                             msg.request_id = matches[2];
-                        else
+                        } else {
                             msg.headers[matches[1]] = matches[2];
+                        }
                     } else {
-                        this.logger.log("MOO: bad header line: ", line, msg);
+                        log.warn("MOO: bad header line: ", line, msg);
                         return undefined;
                     }
                 }
@@ -164,13 +170,13 @@ Moo.prototype.parse = function(buf) {
                 var matches = line.match(/^MOO\/([0-9]+) ([A-Z]+) (.*)/);
                 if (matches) {
                     msg.verb = matches[2];
-                    if (msg.verb == "REQUEST") {
+                    if (msg.verb === "REQUEST") {
                         matches = matches[3].match(/([^\/]+)\/(.*)/);
                         if (matches) {
                             msg.service = matches[1];
                             msg.name = matches[2];
                         } else {
-                            this.logger.log("MOO: bad first line: ", line, msg);
+                            log.warn("MOO: bad first line: ", line, msg);
                             return undefined;
                         }
                     } else {
@@ -178,7 +184,7 @@ Moo.prototype.parse = function(buf) {
                     }
                     state = 'header';
                 } else {
-                    this.logger.log("MOO: bad first line: ", line, msg);
+                    log.warn("MOO: bad first line: ", line, msg);
                     return undefined;
                 }
             }
@@ -186,25 +192,31 @@ Moo.prototype.parse = function(buf) {
         }
         e++;
     }
-    this.logger.log("MOO: message lacks newline in header");
+    log.warn("MOO: message lacks newline in header");
     return undefined;
 };
 
 Moo.prototype.handle_response = function(msg, body) {
     let req = this.requests[msg.request_id];
     if (!req) {
-        this.logger.log("MOO: can not handle RESPONSE due to unknown Request-Id: ", msg);
+        log.warn("MOO: can not handle RESPONSE due to unknown Request-Id: ", msg);
         return false;
     }
-    if (req.cb) req.cb(msg, body);
-    if (msg.verb == "COMPLETE") delete(this.requests[msg.request_id]);
+    if (req.cb) {
+        req.cb(msg, body);
+    }
+    if (msg.verb === "COMPLETE") {
+        delete(this.requests[msg.request_id]);
+    }
     return true;
 };
 
 Moo.prototype.clean_up = function() {
     Object.keys(this.requests).forEach(e => {
-	let cb = this.requests[e].cb;
-	if (cb) cb();
+        let cb = this.requests[e].cb;
+        if (cb) {
+            cb();
+        }
     });
     this.requests = {};
 };
