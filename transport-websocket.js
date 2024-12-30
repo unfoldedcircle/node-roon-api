@@ -1,7 +1,7 @@
 "use strict";
 
 // polyfill websockets in Node
-if (typeof(WebSocket) == "undefined") global.WebSocket = require('ws');
+if (typeof (WebSocket) == "undefined") global.WebSocket = require('ws');
 
 function Transport(ip, port, logger) {
     this.host = ip;
@@ -11,7 +11,9 @@ function Transport(ip, port, logger) {
     this.is_alive = null;
 
     this.ws = new WebSocket("ws://" + ip + ":" + port + "/api");
-    if (typeof(window) != "undefined") this.ws.binaryType = 'arraybuffer';
+    if (typeof (window) != "undefined") {
+        this.ws.binaryType = 'arraybuffer';
+    }
     this.logger = logger;
 
     this.ws.on('pong', () => this.is_alive = true);
@@ -58,15 +60,15 @@ function Transport(ip, port, logger) {
     };
 }
 
-Transport.prototype.send = function(buf) {
+Transport.prototype.send = function (buf) {
     if (!this.ws) {
         this.close();
         return;
     }
-    this.ws.send(buf, { binary: true, mask: true});
+    this.ws.send(buf, {binary: true, mask: true});
 };
 
-Transport.prototype.close = function() {
+Transport.prototype.close = function () {
     if (this.ws) {
         clearInterval(this.interval);
         this.ws.close();
