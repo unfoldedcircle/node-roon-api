@@ -1,9 +1,11 @@
 "use strict";
 
+const log = require('./loggers.js');
+
 // polyfill websockets in Node
 if (typeof (WebSocket) == "undefined") global.WebSocket = require('ws');
 
-function Transport(ip, port, logger) {
+function Transport(ip, port) {
     this.host = ip;
     this.port = port;
 
@@ -14,7 +16,6 @@ function Transport(ip, port, logger) {
     if (typeof (window) != "undefined") {
         this.ws.binaryType = 'arraybuffer';
     }
-    this.logger = logger;
 
     this.ws.on('pong', () => this.is_alive = true);
     this.ws.onopen = () => {
@@ -25,7 +26,7 @@ function Transport(ip, port, logger) {
                 return;
             }
             if (this.is_alive === false) {
-                logger.log(`Roon API Connection to ${this.host}:${this.port} closed due to missed heartbeat`);
+                log.warn(`Roon API Connection to ${this.host}:${this.port} closed due to missed heartbeat`);
                 return this.ws.terminate();
             }
             this.is_alive = false;
@@ -44,7 +45,7 @@ function Transport(ip, port, logger) {
     };
 
     this.ws.onerror = (err) => {
-        this.onerror();
+        this.onerror(err);
     }
 
     this.ws.onmessage = (event) => {
@@ -88,7 +89,7 @@ Transport.prototype.close = function () {
 
 Transport.prototype.onopen = function() { };
 Transport.prototype.onclose = function() { };
-Transport.prototype.onerror = function() { };
+Transport.prototype.onerror = function(err) { };
 Transport.prototype.onmessage = function() { };
 
 exports = module.exports = Transport;

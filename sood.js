@@ -4,24 +4,24 @@ SOOD implements Roon Core discovery using UDP protocol
 
 "use strict";
 
-var util    = require("util"),
+const util    = require("util"),
     events  = require('events'),
     dgram   = require('dgram'),
     IP      = require('ip'),
     uuid    = require('node-uuid'),
-    os      = require('os');
+    os      = require('os'),
+    log = require('./loggers.js');
 
 var SOOD_PORT         = 9003;
 var SOOD_MULTICAST_IP = "239.255.90.90";
 
-function Sood(logger) {
+function Sood() {
     this._multicast = {};
     this._unicast = {};
     this._iface_seq = 0;
-    this.logger = logger;
     this.interface_timer = 0;
-//    this.on("message", (msg) => { this.logger.log(JSON.stringify(msg)); });
-};
+//    this.on("message", (msg) => { log.msgTrace(JSON.stringify(msg)); });
+}
 
 util.inherits(Sood, events.EventEmitter);
 
@@ -35,13 +35,13 @@ function _parse(buf, minfo) {
 	props: {},
     };
     try {
-	if (buf.toString('utf8', 0, 4) != 'SOOD') return null;
-	if (buf[4] != 2) return null;
+	if (buf.toString('utf8', 0, 4) !== 'SOOD') return null;
+	if (buf[4] !== 2) return null;
 	msg.type = buf.toString('utf8', 5, 6);
 	let pos = 6;
 	while (pos < buf.length) {
 	    let len = buf[pos++];
-	    if (len == 0) return null;
+	    if (len === 0) return null;
 	    if (pos + len > buf.length) return null;
 	    let name = buf.toString('utf8', pos, pos+len);
 	    pos += len;
@@ -49,9 +49,9 @@ function _parse(buf, minfo) {
 	    len |= buf[pos++];
 
 	    let val;
-	    if (len == 65535)
+	    if (len === 65535)
 		val = null;
-	    else if (len == 0)
+	    else if (len === 0)
 		val = "";
 	    else {
 		if (pos + len > buf.length) return null;
@@ -103,14 +103,14 @@ Sood.prototype.query = function(msg) {
 
     for (var ip in this._multicast) {
 	if (this._multicast[ip].send_sock) {
-//	    this.logger.log('sending on mcast ' + ip);
+//	    log.debug('sending on mcast ' + ip);
 	    this._multicast[ip].send_sock.send(buf, 0, pos, SOOD_PORT, SOOD_MULTICAST_IP);
-//	    this.logger.log('sending on mcast ' + ip + ", bcast " + this._multicast[ip].broadcast);
+//	    log.debug('sending on mcast ' + ip + ", bcast " + this._multicast[ip].broadcast);
 	    this._multicast[ip].send_sock.send(buf, 0, pos, SOOD_PORT, this._multicast[ip].broadcast);
 	}
     }
     if (this._unicast.send_sock) {
-//	this.logger.log('sending on unicast');
+//	log.debug('sending on unicast');
 	this._unicast.send_sock.send(buf, 0, pos, SOOD_PORT, SOOD_MULTICAST_IP);
     }
 };
@@ -121,13 +121,13 @@ Sood.prototype.initsocket = function(cb) {
     var iface_change = false;
     for (var iface in list) {
         list[iface].forEach(e => {
-            if (e.family == 'IPv4')
+            if (e.family === 'IPv4')
                 iface_change = this._listen_iface(e.address, e.netmask, iface) || iface_change;
         });
     }
 
     for (var ip in this._multicast) {
-        if (this._multicast[ip].seq != this._iface_seq) {
+        if (this._multicast[ip].seq !== this._iface_seq) {
             delete this._multicast[ip];
             iface_change = true;
         }
@@ -135,14 +135,14 @@ Sood.prototype.initsocket = function(cb) {
 
     let unicast = this._unicast;
     if (!unicast.send_sock) {
-        //	    this.logger.log(`SOOD: new sock: unicast`);
+        //	    log.debug(`SOOD: new sock: unicast`);
         unicast.send_sock = dgram.createSocket({ type: 'udp4' });
         unicast.send_sock.on('error', (err) => {
-            //		this.logger.log(`server error ${ip}`, err);
+            //		log.debug(`server error ${ip}`, err);
             unicast.send_sock.close();
         });
         unicast.send_sock.on('close', () => {
-            //		this.logger.log(`closed unicast on ${ip}`);
+            //		log.debug(`closed unicast on ${ip}`);
             delete(unicast.send_sock);
         });
         unicast.send_sock.on('message', (msg, rinfo) => {
@@ -180,15 +180,15 @@ Sood.prototype._listen_iface = function(ip, netmask, ifacename) {
     let new_iface = false;
         
     if (!iface.recv_sock) {
-//	this.logger.log(`SOOD: new sock: recv ${ip}/${ifacename}`);
+//	log.debug(`SOOD: new sock: recv ${ip}/${ifacename}`);
         new_iface = true;
 	iface.recv_sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 	iface.recv_sock.on('error', (err) => {
-//	    this.logger.log(`server error ${ip}`, err);
+//	    log.debug(`server error ${ip}`, err);
 	    iface.recv_sock.close();
 	});
 	iface.recv_sock.on('close', () => {
-//	    this.logger.log(`closed multicast on ${ip}`);
+//	    log.debug(`closed multicast on ${ip}`);
 	    delete(iface.recv_sock);
 	});
 	iface.recv_sock.on('message', (msg, rinfo) => {
@@ -200,16 +200,16 @@ Sood.prototype._listen_iface = function(ip, netmask, ifacename) {
 	});
     }
     if (!iface.send_sock) {
-//        this.logger.log(`SOOD: new sock: send ${ip}/${ifacename}`);
+//        log.debug(`SOOD: new sock: send ${ip}/${ifacename}`);
         new_iface = true;
 	iface.send_sock = dgram.createSocket({ type: 'udp4' });
         iface.broadcast = IP.subnet(ip, netmask).broadcastAddress;
 	iface.send_sock.on('error', (err) => {
-//	    this.logger.log(`server error ${ip}`, err);
+//	    log.debug(`server error ${ip}`, err);
 	    iface.send_sock.close();
 	});
 	iface.send_sock.on('close', () => {
-//	    this.logger.log(`closed multicast on ${ip}`);
+//	    log.debug(`closed multicast on ${ip}`);
 	    delete(iface.send_sock);
 	});
 	iface.send_sock.on('message', (msg, rinfo) => {
@@ -225,4 +225,4 @@ Sood.prototype._listen_iface = function(ip, netmask, ifacename) {
 
 }
 
-exports = module.exports = function(logger) { return new Sood(logger); };
+exports = module.exports = function() { return new Sood(); };
