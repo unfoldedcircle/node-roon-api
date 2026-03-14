@@ -116,9 +116,9 @@ function RoonApi(o) {
     //
     if (o.force_server || typeof (window) == "undefined" || typeof (nw) !== "undefined") {
         /**
-         * Begin the discovery process to find/connect to a Roon Core.
-         */
-        RoonApi.prototype.start_discovery = function () {
+        * Begin the discovery process to find/connect to a Roon Core.
+        */
+        RoonApi.prototype.start_discovery = function() {
             // check if discovery needs to be restarted after stop_discovery has been called
             if (this._sood) {
                 if (this.scanIntervalId) {
