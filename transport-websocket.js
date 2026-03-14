@@ -1,9 +1,11 @@
 "use strict";
 
+const log = require('./loggers.js');
+
 // force polyfill websockets in Node to support Node 22+
 if (typeof(window) == "undefined" || typeof(WebSocket) == "undefined") global.WebSocket = require('ws');
 
-function Transport(ip, port, logger) {
+function Transport(ip, port) {
     this.host = ip;
     this.port = port;
 
@@ -11,8 +13,9 @@ function Transport(ip, port, logger) {
     this.is_alive = null;
 
     this.ws = new WebSocket("ws://" + ip + ":" + port + "/api");
-    if (typeof(window) != "undefined") this.ws.binaryType = 'arraybuffer';
-    this.logger = logger;
+    if (typeof (window) != "undefined") {
+        this.ws.binaryType = 'arraybuffer';
+    }
 
     this.ws.on('pong', () => this.is_alive = true);
     this.ws.onopen = () => {
@@ -23,7 +26,7 @@ function Transport(ip, port, logger) {
                 return;
             }
             if (this.is_alive === false) {
-                logger.log(`Roon API Connection to ${this.host}:${this.port} closed due to missed heartbeat`);
+                log.warn(`Roon API Connection to ${this.host}:${this.port} closed due to missed heartbeat`);
                 return this.ws.terminate();
             }
             this.is_alive = false;
@@ -42,7 +45,7 @@ function Transport(ip, port, logger) {
     };
 
     this.ws.onerror = (err) => {
-        this.onerror();
+        this.onerror(err);
     }
 
     this.ws.onmessage = (event) => {
@@ -58,15 +61,15 @@ function Transport(ip, port, logger) {
     };
 }
 
-Transport.prototype.send = function(buf) {
+Transport.prototype.send = function (buf) {
     if (!this.ws) {
         this.close();
         return;
     }
-    this.ws.send(buf, { binary: true, mask: true});
+    this.ws.send(buf, {binary: true, mask: true});
 };
 
-Transport.prototype.close = function() {
+Transport.prototype.close = function () {
     if (this.ws) {
         clearInterval(this.interval);
         this.ws.close();
@@ -86,7 +89,7 @@ Transport.prototype.close = function() {
 
 Transport.prototype.onopen = function() { };
 Transport.prototype.onclose = function() { };
-Transport.prototype.onerror = function() { };
+Transport.prototype.onerror = function(err) { };
 Transport.prototype.onmessage = function() { };
 
 exports = module.exports = Transport;
