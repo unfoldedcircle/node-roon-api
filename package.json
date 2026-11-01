@@ -5,6 +5,9 @@
   "main": "lib.js",
   "author": "Roon Labs, LLC",
   "license": "Apache-2.0",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "debug": "^4.4.0",
     "node-uuid": "^1.4.8",

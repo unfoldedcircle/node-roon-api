@@ -169,6 +169,7 @@ Sood.prototype.start = function(cb) {
 };
 Sood.prototype.stop = function() {
     if (this.interface_timer) clearInterval(this.interface_timer);
+    this.interface_timer = 0;
     for (const ip in this._multicast) {
 	try { this._multicast[ip].recv_sock.close(); } catch (e) { }
 	try { this._multicast[ip].send_sock.close(); } catch (e) { }
