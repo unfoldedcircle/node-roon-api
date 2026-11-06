@@ -33,7 +33,6 @@ function Transport(ip, port) {
             this.ws.ping();
         }, 10000)
 
-        this._isonopencalled = true;
         this.onopen();
     };
 
@@ -76,7 +75,9 @@ Transport.prototype.close = function () {
         this.ws = undefined;
     }
 
-    if (!this._onclosecalled && this._isonopencalled) {
+    // Also notify for connections that failed before opening, so discovery can
+    // remove the cached connection and retry when the network is available.
+    if (!this._onclosecalled) {
         this._onclosecalled = true;
         this.onclose();
     }
